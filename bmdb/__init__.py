@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 """BMDB - Minimal schema manager for SQLAlchemy"""
 
-__version__ = "0.1.0"
+__version__ = "1.0"
+__author__ = "Marouan Bouchettoy"
 
 from bmdb.cli import cli
 
