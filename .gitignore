@@ -1,19 +1,58 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
-.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
 venv/
 ENV/
-env/
-
-# BMDB specific
-models.bmdb
-.env
-bmdb/models/generated/*.py
-!bmdb/models/generated/__init__.py
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
@@ -21,11 +60,22 @@ bmdb/models/generated/*.py
 *.swp
 *.swo
 
-# Distribution
-dist/
-build/
-*.egg-info/
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+bmdb.log
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Project specific
+migrations/
+config.json
+test.db
+example.db
+models.db

@@ -8,15 +8,43 @@ version = "0.1.0"
 authors = [
     {name = "Marouan Bouchettoy", email = "marouanbouchettoy@gmail.com"}
 ]
-description = "BM Database Framework"
+description = "BM Database Framework - A lightweight database framework"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Database :: Database Engines/Servers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "sqlite3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+    "flake8>=6.0",
+]
+
+mysql = [
+    "mysql-connector-python>=8.0",
+    "pymysql>=1.0",
+]
+
+postgresql = [
+    "psycopg2-binary>=2.9",
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/BM-Framework/bmdb"
 "Repository" = "https://github.com/BM-Framework/bmdb.git"
+"Bug Tracker" = "https://github.com/BM-Framework/bmdb/issues"
+
+[project.scripts]
+bmdb = "bmdb.cli:main"
