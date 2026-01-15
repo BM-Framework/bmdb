@@ -13,7 +13,7 @@ OUT_DIR = Path("bmdb/models/generated")
 Base = declarative_base()
 
 @click.group()
-def cli():
+def main():
     """BMDB - minimal schema manager"""
     pass
 
@@ -211,7 +211,7 @@ def generate_models():
 
     click.echo("Generated -> bmdb/models/generated/")
 
-@cli.command("create-model")
+@main.command("create-model")
 @click.argument("name")
 def create_model(name):
     data = load_models()
@@ -222,7 +222,7 @@ def create_model(name):
     save_models(data)
     click.echo(f"Model {name} created")
 
-@cli.command("add-fields")
+@main.command("add-fields")
 @click.argument("model")
 @click.argument("fields", nargs=-1)
 @click.option("--unique", multiple=True)
@@ -243,11 +243,11 @@ def add_fields(model, fields, unique):
     save_models(data)
     click.echo(f"Fields added to {model}")
 
-@cli.command("generate")
+@main.command("generate")
 def generate():
     generate_models()
 
-@cli.command("migrate")
+@main.command("migrate")
 def migrate():
     try:
         # First, let's check if .env can be read properly
@@ -330,4 +330,4 @@ def migrate():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    cli()
+    main()
