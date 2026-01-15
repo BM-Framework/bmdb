@@ -1,16 +1,13 @@
-import inspect
 from pathlib import Path
 import os
+import sys
 import click
 import yaml
 from dotenv import load_dotenv
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import create_engine, inspect
 
 MODELS_FILE = "models.bmdb"
-# In cli.py, change OUT_DIR
-OUT_DIR = Path(__file__).parent.parent / "models" / "generated"
-
-Base = declarative_base()
+OUT_DIR = Path("bmdb/models/generated")
 
 @click.group()
 def main():
@@ -214,6 +211,7 @@ def generate_models():
 @main.command("create-model")
 @click.argument("name")
 def create_model(name):
+    """Create a new model"""
     data = load_models()
     if name in data["models"]:
         click.echo(f"Model {name} already exists")
@@ -227,6 +225,7 @@ def create_model(name):
 @click.argument("fields", nargs=-1)
 @click.option("--unique", multiple=True)
 def add_fields(model, fields, unique):
+    """Add fields to a model"""
     if len(fields) % 2 != 0:
         click.echo("Fields must come in name-type pairs")
         return
@@ -245,12 +244,13 @@ def add_fields(model, fields, unique):
 
 @main.command("generate")
 def generate():
+    """Generate Python models from models.bmdb"""
     generate_models()
 
 @main.command("migrate")
 def migrate():
+    """Create database tables from generated models"""
     try:
-        # First, let's check if .env can be read properly
         load_dotenv()
         db_url = os.getenv("DB_CONNECTION", "").strip('"')
         if not db_url:
@@ -259,57 +259,61 @@ def migrate():
         
         click.echo(f"DB URL loaded: {db_url[:30]}...")
         
-        # IMPORTANT: We need to import from the generated models
-        # First, ensure the generated models exist
-        models_file = Path("bmdb/models/generated/models.py")
-        if not models_file.exists():
-            click.echo("Error: Generated models not found. Run 'bmdb generate' first.")
+        # Look for models in current directory
+        models_path = Path.cwd() / "bmdb" / "models" / "generated" / "models.py"
+        if not models_path.exists():
+            click.echo("Error: Generated models not found in current directory.")
+            click.echo(f"Looked for: {models_path}")
+            click.echo("Make sure you're in the project root and ran 'bmdb generate'")
             return
         
-        # Clear any cached imports
-        import sys
-        if 'bmdb.models.generated.models' in sys.modules:
-            del sys.modules['bmdb.models.generated.models']
+        # Clear sys.modules cache
+        for module in list(sys.modules.keys()):
+            if module.startswith('bmdb.models'):
+                del sys.modules[module]
         
-        # Add current directory to path to import generated models
-        current_dir = Path.cwd()
-        if str(current_dir) not in sys.path:
-            sys.path.insert(0, str(current_dir))
+        # Add current directory to Python path
+        sys.path.insert(0, str(Path.cwd()))
         
-        click.echo("Importing generated models...")
+        click.echo("Importing models from current directory...")
         
-        try:
-            # Import the Base from generated models
-            from bmdb.models.generated.models import Base # type: ignore
-        except ImportError as e:
-            click.echo(f"Error importing generated models: {e}")
-            click.echo("Make sure you ran 'bmdb generate' first")
-            return
+        # Dynamic import to avoid cache issues
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "generated_models", 
+            str(models_path)
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
         
-        from sqlalchemy import create_engine
-
+        Base = module.Base
+        click.echo(f"Successfully imported Base with {len(Base.metadata.tables)} tables")
+        
+        # Show what tables will be created
+        for table_name in Base.metadata.tables.keys():
+            click.echo(f"  - {table_name}")
+        
         click.echo("Creating engine...")
-        engine = create_engine(db_url, echo=True, client_encoding='utf8')  # echo=True to see SQL
+        engine = create_engine(db_url, echo=True)  # echo=True to see SQL
+        
+        # Check existing tables
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        click.echo(f"Existing tables: {existing_tables}")
         
         click.echo("Creating tables...")
-        
-        # Get all table names before creation
-        inspector = inspect(engine)
-        tables_before = inspector.get_table_names()
-        click.echo(f"Tables before: {tables_before}")
-        
-        # Create tables
         Base.metadata.create_all(engine)
         
-        # Get all table names after creation
-        tables_after = inspector.get_table_names()
-        click.echo(f"Tables after: {tables_after}")
+        # Verify
+        new_tables = inspector.get_table_names()
+        click.echo(f"All tables now: {new_tables}")
         
-        new_tables = set(tables_after) - set(tables_before)
-        if new_tables:
-            click.echo(f"New tables created: {list(new_tables)}")
+        # Show newly created tables
+        created = set(new_tables) - set(existing_tables)
+        if created:
+            click.echo(f"New tables created: {list(created)}")
         else:
-            click.echo("No new tables were created. Check the SQL output above.")
+            click.echo("Note: No new tables were created (they might already exist)")
         
         click.echo("Migration done!")
         
@@ -317,6 +321,43 @@ def migrate():
         click.echo(f"Migration failed: {e}")
         import traceback
         traceback.print_exc()
+
+@main.command("list-models")
+def list_models():
+    """List all defined models"""
+    data = load_models()
+    if not data.get("models"):
+        click.echo("No models defined")
+        return
+    
+    click.echo("Defined models:")
+    for model_name, model_data in data["models"].items():
+        click.echo(f"\n{model_name}:")
+        for field_name, field_type in model_data.get("fields", {}).items():
+            click.echo(f"  - {field_name}: {field_type}")
+
+@main.command("init")
+def init():
+    """Initialize a new BMDB project"""
+    if Path(MODELS_FILE).exists():
+        click.echo(f"{MODELS_FILE} already exists")
+    else:
+        save_models({"models": {}})
+        click.echo(f"Created {MODELS_FILE}")
+    
+    # Create .env example if not exists
+    if not Path(".env").exists():
+        with open(".env.example", "w") as f:
+            f.write("# Database connection\n")
+            f.write("DB_CONNECTION=postgresql://user:password@localhost:5432/dbname\n")
+        click.echo("Created .env.example")
+    
+    click.echo("\nNext steps:")
+    click.echo("1. Copy .env.example to .env and edit with your database details")
+    click.echo("2. Create a model: bmdb create-model ModelName")
+    click.echo("3. Add fields: bmdb add-fields ModelName field1 String field2 Integer")
+    click.echo("4. Generate models: bmdb generate")
+    click.echo("5. Migrate database: bmdb migrate")
 
 if __name__ == "__main__":
     main()
