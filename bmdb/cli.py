@@ -1,7 +1,6 @@
+import inspect
 from pathlib import Path
 import os
-import sys
-import shutil
 import click
 import yaml
 from dotenv import load_dotenv
@@ -259,73 +258,62 @@ def migrate():
         
         click.echo(f"DB URL loaded: {db_url[:30]}...")
         
+        # IMPORTANT: We need to import from the generated models
+        # First, ensure the generated models exist
+        models_file = Path("bmdb/models/generated/models.py")
+        if not models_file.exists():
+            click.echo("Error: Generated models not found. Run 'bmdb generate' first.")
+            return
+        
         # Clear any cached imports
-        if 'models' in sys.modules:
-            del sys.modules['models']
-        if 'models.generated' in sys.modules:
-            del sys.modules['models.generated']
-        if 'models.generated.models' in sys.modules:
-            del sys.modules['models.generated.models']
+        import sys
+        if 'bmdb.models.generated.models' in sys.modules:
+            del sys.modules['bmdb.models.generated.models']
         
-        # Delete __pycache__ to avoid cached bytecode issues
-        pycache_dirs = [
-            Path("bmdb/models/__pycache__"),
-            Path("bmdb/models/generated/__pycache__"),
-            Path("bmdb/__pycache__")
-        ]
-        for pycache in pycache_dirs:
-            if pycache.exists():
-                shutil.rmtree(pycache)
-                click.echo(f"Cleared cache: {pycache}")
+        # Add current directory to path to import generated models
+        current_dir = Path.cwd()
+        if str(current_dir) not in sys.path:
+            sys.path.insert(0, str(current_dir))
         
-        # Add bmdb to path
-        bmdb_path = Path("bmdb").absolute()
-        if str(bmdb_path) not in sys.path:
-            sys.path.insert(0, str(bmdb_path))
+        click.echo("Importing generated models...")
         
-        click.echo("Importing models...")
+        try:
+            # Import the Base from generated models
+            from bmdb.models.generated.models import Base # type: ignore
+        except ImportError as e:
+            click.echo(f"Error importing generated models: {e}")
+            click.echo("Make sure you ran 'bmdb generate' first")
+            return
+        
         from sqlalchemy import create_engine
 
         click.echo("Creating engine...")
-        # Add client_encoding parameter to handle French PostgreSQL messages
-        engine = create_engine(db_url, echo=False, client_encoding='utf8')
+        engine = create_engine(db_url, echo=True, client_encoding='utf8')  # echo=True to see SQL
         
         click.echo("Creating tables...")
+        
+        # Get all table names before creation
+        inspector = inspect(engine)
+        tables_before = inspector.get_table_names()
+        click.echo(f"Tables before: {tables_before}")
+        
+        # Create tables
         Base.metadata.create_all(engine)
         
-        click.echo("Migration done -> tables created/updated")
+        # Get all table names after creation
+        tables_after = inspector.get_table_names()
+        click.echo(f"Tables after: {tables_after}")
         
-    except UnicodeDecodeError as e:
-        click.echo("\nEncoding error from PostgreSQL:")
-        # Try to decode the error message with different encodings
-        if hasattr(e, 'object') and isinstance(e.object, bytes):
-            try:
-                decoded_latin1 = e.object.decode('latin-1')
-                click.echo(f"Database error: {decoded_latin1}")
-            except:  # noqa: E722
-                try:
-                    decoded_cp1252 = e.object.decode('cp1252')
-                    click.echo(f"Database error: {decoded_cp1252}")
-                except:  # noqa: E722
-                    click.echo(f"Raw error bytes: {e.object}")
+        new_tables = set(tables_after) - set(tables_before)
+        if new_tables:
+            click.echo(f"New tables created: {list(new_tables)}")
+        else:
+            click.echo("No new tables were created. Check the SQL output above.")
         
-        click.echo("\nThis appears to be a database connection error.")
-        click.echo("Common causes:")
-        click.echo("  1. Wrong password in DB_CONNECTION")
-        click.echo("  2. Database user doesn't exist")
-        click.echo("  3. Database doesn't exist")
-        click.echo("  4. PostgreSQL server not running on port 5433")
-        click.echo("\nPlease verify your database credentials.")
+        click.echo("Migration done!")
         
-    except ImportError as e:
-        click.echo("Error: Cannot import generated models.")
-        click.echo(f"Details: {e}")
-        click.echo("Run 'bmdb generate' first.")
-        import traceback
-        traceback.print_exc()
     except Exception as e:
         click.echo(f"Migration failed: {e}")
-        click.echo(f"Error type: {type(e).__name__}")
         import traceback
         traceback.print_exc()
 
