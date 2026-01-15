@@ -25,6 +25,7 @@ setup(
         "setuptools==80.9.0",
         "SQLAlchemy==2.0.45",
         "typing_extensions==4.15.0",
+        "psycopg2==2.9.11"
     ],
     entry_points={
         'console_scripts': [
