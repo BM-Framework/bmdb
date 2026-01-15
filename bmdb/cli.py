@@ -16,6 +16,9 @@ def main():
 
 def load_models():
     """Load models from models.bmdb file in current directory"""
+    # Ensure the directory exists
+    MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    
     if not MODELS_FILE.exists():
         return {"models": {}}
     with open(MODELS_FILE, "r", encoding="utf-8") as f:
@@ -23,6 +26,9 @@ def load_models():
 
 def save_models(data):
     """Save models to models.bmdb file in current directory"""
+    # Ensure the directory exists
+    MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    
     with open(MODELS_FILE, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
 
@@ -410,7 +416,18 @@ def init():
     current_dir = Path.cwd()
     click.echo(f"Initializing BMDB project in: {current_dir}")
     
-    # Create models.bmdb if not exists
+    # Create project structure FIRST
+    project_structure = [
+        current_dir / "bmdb",
+        current_dir / "bmdb" / "models",
+        current_dir / "bmdb" / "models" / "generated",
+    ]
+    
+    for folder in project_structure:
+        folder.mkdir(parents=True, exist_ok=True)
+        click.echo(f"✓ Created directory: {folder}")
+    
+    # NOW create models.bmdb if not exists
     if MODELS_FILE.exists():
         click.echo(f"✓ {MODELS_FILE} already exists")
     else:
@@ -428,18 +445,6 @@ def init():
             f.write("# DB_CONNECTION=sqlite:///database.db\n")
         click.echo(f"✓ Created {env_example}")
     
-    # Create project structure
-    project_structure = [
-        current_dir / "bmdb",
-        current_dir / "bmdb" / "models",
-        current_dir / "bmdb" / "models" / "generated",
-    ]
-    
-    for folder in project_structure:
-        folder.mkdir(parents=True, exist_ok=True)
-    
-    click.echo("✓ Created project structure")
-    
     click.echo("\n" + "="*50)
     click.echo("✅ Project initialized successfully!")
     click.echo("\nNext steps:")
@@ -447,7 +452,7 @@ def init():
     click.echo("2. Create your first model: bmdb create-model User")
     click.echo("3. Add fields: bmdb add-fields User name String email String --unique email")
     click.echo("4. Generate models: bmdb generate")
-    click.echo("5. Migrate database: bmdb migrate")
+    click.echo("5. Migrate database: bmdb migrate-schema")
     click.echo("\nFor help: bmdb --help")
 
 @main.command("where")
