@@ -6,8 +6,8 @@ import yaml
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect
 
-MODELS_FILE = "models.bmdb"
-OUT_DIR = Path("bmdb/models/generated")
+MODELS_FILE = Path.cwd() / "bmdb" / "models" / "models.bmdb"
+OUT_DIR = Path.cwd() / "bmdb" / "models" / "generated"
 
 @click.group()
 def main():
