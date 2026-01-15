@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import declarative_base
 
 MODELS_FILE = "models.bmdb"
-OUT_DIR = Path("bmdb/models/generated")
+# In cli.py, change OUT_DIR
+OUT_DIR = Path(__file__).parent.parent / "models" / "generated"
 
 Base = declarative_base()
 
