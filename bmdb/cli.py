@@ -8,7 +8,10 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import declarative_base
 
 MODELS_FILE = "models.bmdb"
-OUT_DIR = Path("bmdb/models/generated")
+
+# Get the directory where this file is located
+PACKAGE_DIR = Path(__file__).parent
+OUT_DIR = PACKAGE_DIR / "models" / "generated"
 
 Base = declarative_base()
 
