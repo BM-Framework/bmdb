@@ -4,7 +4,7 @@ import sys
 import click
 import yaml
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 MODELS_FILE = Path.cwd() / "bmdb" / "models" / "models.bmdb"  # Always use absolute path
 OUT_DIR = Path.cwd() / "bmdb" / "models" / "generated"  # Always use absolute path
@@ -286,86 +286,102 @@ def generate():
     click.echo(f"Looking for models.bmdb at: {MODELS_FILE}")
     generate_models()
 
-@main.command("migrate")
-def migrate():
-    """Create database tables from generated models"""
+@main.command("migrate-schema")
+@click.option("--safe", is_flag=True, help="Safe mode (won't drop columns)")
+@click.option("--dry-run", is_flag=True, help="Show what would change without applying")
+def migrate_schema(safe, dry_run):
+    """Update existing database schema to match models (add/modify columns)"""
     try:
-        # Load .env from current directory
-        env_path = Path.cwd() / ".env"
-        if env_path.exists():
-            load_dotenv(dotenv_path=env_path)
-            click.echo(f"✓ Loaded .env from: {env_path}")
-        else:
-            load_dotenv()
-            click.echo("⚠ Using default .env location")
-        
+        load_dotenv()
         db_url = os.getenv("DB_CONNECTION", "").strip('"')
         if not db_url:
             click.echo("✗ Error: DB_CONNECTION not found in .env")
-            click.echo(f"  Check your .env file at: {env_path}")
             return
         
-        click.echo(f"✓ DB URL loaded: {db_url[:50]}...")
-        
-        # Look for models in current directory
+        # Import models
         models_path = OUT_DIR / "models.py"
-        click.echo(f"Looking for models at: {models_path}")
-        
         if not models_path.exists():
-            click.echo(f"✗ Error: Generated models not found at {models_path}")
-            click.echo("  Make sure you're in the project root and ran 'bmdb generate'")
-            click.echo(f"  Current directory: {Path.cwd()}")
+            click.echo("✗ Generated models not found. Run 'bmdb generate' first.")
             return
         
-        # Clear import cache
-        for module in list(sys.modules.keys()):
-            if 'bmdb' in module or 'generated' in module:
-                del sys.modules[module]
-        
-        # Add current directory to Python path
-        sys.path.insert(0, str(Path.cwd()))
-        
-        click.echo("✓ Importing models...")
-        
-        # Dynamic import
         import importlib.util
         spec = importlib.util.spec_from_file_location("generated_models", str(models_path))
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        
         Base = module.Base
-        click.echo(f"✓ Successfully imported Base with {len(Base.metadata.tables)} table(s)")
         
-        # Show tables to be created
-        for table_name in Base.metadata.tables.keys():
-            click.echo(f"  - {table_name}")
-        
-        click.echo("✓ Creating engine...")
-        engine = create_engine(db_url, echo=True)
-        
-        # Check existing tables
+        engine = create_engine(db_url)
         inspector = inspect(engine)
-        existing_tables = inspector.get_table_names()
-        click.echo(f"✓ Existing tables in database: {existing_tables}")
         
-        click.echo("✓ Creating tables...")
-        Base.metadata.create_all(engine)
+        click.echo("🔍 Analyzing database schema...")
         
-        # Verify
-        new_tables = inspector.get_table_names()
-        click.echo(f"✓ All tables now: {new_tables}")
+        changes = []
         
-        # Show newly created tables
-        created = set(new_tables) - set(existing_tables)
-        if created:
-            click.echo(f"✅ New tables created: {list(created)}")
-        else:
-            click.echo("⚠ Note: No new tables were created (they might already exist)")
+        for table_name, table in Base.metadata.tables.items():
+            if table_name not in inspector.get_table_names():
+                changes.append(f"➕ CREATE TABLE {table_name}")
+                continue
+            
+            existing_columns = {col['name']: col for col in inspector.get_columns(table_name)}
+            model_columns = {col.name: col for col in table.columns}
+            
+            # Check for new columns
+            for col_name, model_col in model_columns.items():
+                if col_name not in existing_columns:
+                    col_type = str(model_col.type)
+                    changes.append(f"  ➕ ADD COLUMN {table_name}.{col_name} ({col_type})")
+            
+            # Check for type changes
+            for col_name, model_col in model_columns.items():
+                if col_name in existing_columns:
+                    existing_type = str(existing_columns[col_name]['type'])
+                    model_type = str(model_col.type)
+                    if existing_type != model_type:
+                        changes.append(f"  🔄 MODIFY {table_name}.{col_name} ({existing_type} → {model_type})")
+            
+            # Check for columns to drop
+            if not safe:
+                for col_name in existing_columns.keys():
+                    if col_name not in model_columns:
+                        changes.append(f"  🗑️  DROP COLUMN {table_name}.{col_name}")
         
-        click.echo("✅ Migration completed!")
+        if not changes:
+            click.echo("✅ Database schema is already up to date!")
+            return
+        
+        click.echo("\n📋 Proposed changes:")
+        for change in changes:
+            click.echo(f"  {change}")
+        
+        if dry_run:
+            click.echo("\n✅ Dry run complete - no changes were made.")
+            return
+        
+        if changes and click.confirm("\nApply these changes to the database?"):
+            # Apply changes
+            with engine.begin() as conn:
+                for table_name, table in Base.metadata.tables.items():
+                    if table_name not in inspector.get_table_names():
+                        table.create(conn)
+                        click.echo(f"✅ Created table: {table_name}")
+                        continue
+                    
+                    # Handle column changes
+                    existing_columns = {col['name']: col for col in inspector.get_columns(table_name)}
+                    model_columns = {col.name: col for col in table.columns}
+                    
+                    # Add new columns
+                    for col_name, model_col in model_columns.items():
+                        if col_name not in existing_columns:
+                            col_type = model_col.type.compile(engine.dialect)
+                            sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
+                            conn.execute(text(sql))
+                            click.echo(f"✅ Added column: {table_name}.{col_name}")
+        
+        click.echo("\n✅ Schema migration completed!")
         
     except Exception as e:
-        click.echo(f"✗ Migration failed: {type(e).__name__}: {e}")
+        click.echo(f"✗ Migration failed: {e}")
         import traceback
         traceback.print_exc()
 
