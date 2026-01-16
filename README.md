@@ -10,6 +10,12 @@ A lightweight SQLAlchemy schema manager with YAML-based model definitions.
 pip install git+https://github.com/BM-Framework/bmdb.git
 ```
 
+### From Pypi
+
+```bash
+pip install bmdb
+```
+
 ### From source (development)
 
 ```bash
