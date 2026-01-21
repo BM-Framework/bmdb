@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import sys
+import time
 import click
 import yaml
 from dotenv import load_dotenv
@@ -396,8 +397,39 @@ def migrate_schema(safe, dry_run):
                             existing_type = str(existing_columns[col_name]['type'])
                             model_type = str(model_col.type.compile(engine.dialect))
                             if existing_type != model_type:
-                                sql = f"ALTER TABLE {table_name} MODIFY COLUMN {col_name} {model_type}"
-                                conn.execute(text(sql))
+                                if "postgresql" in db_url.lower():
+                                    sql = f"ALTER TABLE {table_name} ALTER COLUMN {col_name} TYPE {model_type}"
+                                    conn.execute(text(sql))
+
+                                elif "mysql" in db_url.lower() or "mariadb" in db_url.lower():
+                                    sql = f"ALTER TABLE {table_name} MODIFY COLUMN {col_name} {model_type}"
+                                    conn.execute(text(sql))
+
+                                elif "sqlite" in db_url.lower():
+                                    click.echo(f"SQLite: recreating table {table_name} to change {col_name} type")
+
+                                    temp_table = f"{table_name}_temp_{int(time.time())}"
+
+                                    # Create temp table with new schema
+                                    temp_table_obj = Base.metadata.tables[table_name].to_metadata(
+                                        Base.metadata, name=temp_table
+                                    )
+                                    temp_table_obj.create(conn)
+
+                                    # Copy data
+                                    columns = ", ".join(c.name for c in Base.metadata.tables[table_name].columns)
+                                    conn.execute(text(
+                                        f"INSERT INTO {temp_table} ({columns}) SELECT {columns} FROM {table_name}"
+                                    ))
+
+                                    # Drop old → rename new
+                                    conn.execute(text(f"DROP TABLE {table_name}"))
+                                    conn.execute(text(f"ALTER TABLE {temp_table} RENAME TO {table_name}"))
+
+                                else:
+                                    click.echo("✗ Type change not supported for this database")
+                                    continue
+
                                 click.echo(f"✅ Modified column: {table_name}.{col_name}")
         
         click.echo("\n✅ Schema migration completed!")
