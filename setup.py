@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="bmdb",
-    version="1.2.0",
+    version="1.3.0",
     author="Marouan Bouchettoy",
     author_email="marouanbouchettoy@gmail.com",
     description="BM Database Framework",

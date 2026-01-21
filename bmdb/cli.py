@@ -292,7 +292,7 @@ def generate():
     click.echo(f"Looking for models.bmdb at: {MODELS_FILE}")
     generate_models()
 
-@main.command("migrate-schema")
+@main.command("migrate")
 @click.option("--safe", is_flag=True, help="Safe mode (won't drop columns)")
 @click.option("--dry-run", is_flag=True, help="Show what would change without applying")
 def migrate_schema(safe, dry_run):
@@ -383,6 +383,22 @@ def migrate_schema(safe, dry_run):
                             sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
                             conn.execute(text(sql))
                             click.echo(f"✅ Added column: {table_name}.{col_name}")
+
+                    for col_name in existing_columns:
+                        if col_name not in model_columns and not safe:
+                            sql = f"ALTER TABLE {table_name} DROP COLUMN {col_name}"
+                            conn.execute(text(sql))
+                            click.echo(f"✅ Dropped column: {table_name}.{col_name}")
+
+                    # For type changes (very basic – only works for some databases)
+                    for col_name, model_col in model_columns.items():
+                        if col_name in existing_columns:
+                            existing_type = str(existing_columns[col_name]['type'])
+                            model_type = str(model_col.type.compile(engine.dialect))
+                            if existing_type != model_type:
+                                sql = f"ALTER TABLE {table_name} MODIFY COLUMN {col_name} {model_type}"
+                                conn.execute(text(sql))
+                                click.echo(f"✅ Modified column: {table_name}.{col_name}")
         
         click.echo("\n✅ Schema migration completed!")
         
